@@ -1,6 +1,5 @@
-- item: Cycling helmet
-  section: Sports Equipment
-- item: Padded shorts
-  section: Clothing
-- item: Sunglasses
-  section: Clothing
+Sports Equipment:
+- Cycling helmet
+Clothing:
+- Padded shorts
+- Sunglasses

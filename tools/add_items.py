@@ -10,14 +10,19 @@ args = parser.parse_args()
 
 topic_file = Path("templates") / f"{args.topic}.yaml"
 with open(args.input_file) as f:
-    items = [line.strip() for line in f if line.strip()]
+    new_items = [line.strip() for line in f if line.strip()]
 
-entries = [{"item": item, "section": args.section} for item in items]
-
-existing = []
+data = {}
 if topic_file.exists():
     with open(topic_file) as f:
-        existing = yaml.safe_load(f) or []
+        data = yaml.safe_load(f) or {}
+
+section_items = data.get(args.section, [])
+for item in new_items:
+    if item not in section_items:
+        section_items.append(item)
+
+data[args.section] = section_items
 
 with open(topic_file, "w") as f:
-    yaml.dump(existing + entries, f, sort_keys=False)
+    yaml.dump(data, f, sort_keys=False)

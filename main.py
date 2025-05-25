@@ -10,12 +10,16 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 OUTPUT_DIR = Path(__file__).parent / "packing"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+SYMBOLS = ["*", "#", "$", "@", "&", "%", "+", "!", "^", "~"]
+
 class PackingApp(App):
     CSS_PATH = None
-    BINDINGS = [("q", "quit", "Quit")]
+    BINDINGS = [("q", "quit", "Quit"), ("t", "toggle_tags", "Toggle Topic Tags")]
 
     selected_topics = reactive(set)
     checklist_data = reactive([])
+    topic_symbols = reactive({})
+    tag_mode = reactive(False)  # show tags or not
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -32,6 +36,10 @@ class PackingApp(App):
             yield Button("Save Checklist", id="save")
             yield Button("Quit", id="quit")
         yield Footer()
+
+    def action_toggle_tags(self):
+        self.tag_mode = not self.tag_mode
+        self.generate_checklist()
 
     def on_mount(self):
         self.selected_topics = set()
@@ -51,32 +59,42 @@ class PackingApp(App):
             self.exit()
 
     def generate_checklist(self):
-        all_items = []
-        for topic in self.selected_topics:
+        all_items = {}
+        topic_map = {}
+
+        sorted_topics = sorted(self.selected_topics)
+        symbol_map = {topic: SYMBOLS[i % len(SYMBOLS)] for i, topic in enumerate(sorted_topics)}
+        self.topic_symbols = symbol_map
+
+        for topic in sorted_topics:
             path = TEMPLATE_DIR / f"{topic}.yaml"
             if path.exists():
                 with open(path) as f:
-                    items = yaml.safe_load(f) or []
-                    all_items.extend(items)
-
-        unique = {}
-        for entry in all_items:
-            key = entry["item"].strip().lower()
-            if key not in unique:
-                unique[key] = entry
+                    data = yaml.safe_load(f) or {}
+                    for section, items in data.items():
+                        for item in items:
+                            key = item.strip().lower()
+                            if key not in all_items:
+                                all_items[key] = (item, section)
+                                topic_map[key] = topic
 
         grouped = {}
-        for entry in unique.values():
-            section = entry.get("section", "Misc")
-            grouped.setdefault(section, []).append(entry["item"])
+        for key, (item, section) in all_items.items():
+            grouped.setdefault(section, []).append((item, topic_map[key]))
 
         self.checklist_data = grouped
-
         self.output_box.remove_children()
+
         for section in sorted(grouped.keys()):
             self.output_box.mount(Static(f"## {section}"))
-            for item in sorted(grouped[section]):
-                self.output_box.mount(Static(f"[ ] {item}"))
+            for item, topic in sorted(grouped[section]):
+                suffix = f" {symbol_map[topic]}" if self.tag_mode else ""
+                self.output_box.mount(Static(f"- [ ] {item}{suffix}"))
+
+        if self.tag_mode:
+            self.output_box.mount(Static("\n## Legend"))
+            for topic in sorted_topics:
+                self.output_box.mount(Static(f"{symbol_map[topic]} = {topic}"))
 
     def save_checklist(self):
         if not self.checklist_data:
@@ -86,9 +104,14 @@ class PackingApp(App):
         with open(out_path, "w") as f:
             for section in sorted(self.checklist_data.keys()):
                 f.write(f"## {section}\n")
-                for item in sorted(self.checklist_data[section]):
-                    f.write(f"- [ ] {item}\n")
+                for item, topic in sorted(self.checklist_data[section]):
+                    suffix = f" {self.topic_symbols[topic]}" if self.tag_mode else ""
+                    f.write(f"- [ ] {item}{suffix}\n")
                 f.write("\n")
+            if self.tag_mode:
+                f.write("## Legend\n")
+                for topic in sorted(self.topic_symbols.keys()):
+                    f.write(f"{self.topic_symbols[topic]} = {topic}\n")
         self.output_box.mount(Static(f"Saved to {out_path}"))
 
 if __name__ == "__main__":
