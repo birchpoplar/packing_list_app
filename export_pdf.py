@@ -1,11 +1,11 @@
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Image, Paragraph, Spacer, Frame, PageTemplate
-from reportlab.platypus.flowables import KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 import sys
 
-HEADER_IMAGE_PATH = "A_digital_graphic_design_image_serves_as_a_header_.png"
+HEADER_IMAGE_PATH = "packing_list_header.png"
 
 def parse_markdown_checklist(md_path):
     with open(md_path) as f:
@@ -23,6 +23,9 @@ def parse_markdown_checklist(md_path):
             current_items = []
         elif line.startswith("- [ ]"):
             current_items.append(line[6:].strip())
+        elif current_section.lower() == "legend" and line and not line.startswith("## "):
+            current_items.append(line.strip())
+
     if current_section:
         sections.append((current_section, current_items))
 
@@ -37,29 +40,36 @@ def generate_pdf(md_path, pdf_path):
 
     sections = parse_markdown_checklist(md_path)
 
+    # Two-column layout
+    col_width = (doc.width / 2) - 6
+    frame1 = Frame(doc.leftMargin, doc.bottomMargin, col_width, doc.height, id='col1')
+    frame2 = Frame(doc.leftMargin + col_width + 12, doc.bottomMargin, col_width, doc.height, id='col2')
+    doc.addPageTemplates([PageTemplate(id='TwoCol', frames=[frame1, frame2])])
+
     items = []
 
-    # Insert header image
+    # Scaled image to fit one column
     try:
-        img = Image(HEADER_IMAGE_PATH, width=6.5*inch, height=2*inch)
+        img_reader = ImageReader(HEADER_IMAGE_PATH)
+        img_width, img_height = img_reader.getSize()
+        display_width = col_width
+        aspect = img_height / float(img_width)
+        display_height = display_width * aspect
+        img = Image(HEADER_IMAGE_PATH, width=display_width, height=display_height)
         items.append(img)
         items.append(Spacer(1, 0.25*inch))
     except Exception as e:
         print("Could not load header image:", e)
 
-    checkbox_symbol = "☐"  # Unicode empty checkbox
+    checkbox_symbol = "☐"
 
     for section, checklist in sections:
         items.append(Paragraph(f"<b>{section}</b>", title))
         items.append(Spacer(1, 0.1*inch))
         for item in checklist:
-            items.append(Paragraph(f"{checkbox_symbol} {item}", normal))
+            prefix = "" if section.lower() == "legend" else f"{checkbox_symbol} "
+            items.append(Paragraph(f"{prefix}{item}", normal))
         items.append(Spacer(1, 0.2*inch))
-
-    # Two-column layout
-    frame1 = Frame(doc.leftMargin, doc.bottomMargin, (doc.width / 2) - 6, doc.height, id='col1')
-    frame2 = Frame(doc.leftMargin + (doc.width / 2) + 6, doc.bottomMargin, (doc.width / 2) - 6, doc.height, id='col2')
-    doc.addPageTemplates([PageTemplate(id='TwoCol', frames=[frame1, frame2])])
 
     doc.build(items)
 
